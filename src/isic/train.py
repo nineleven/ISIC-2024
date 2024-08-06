@@ -171,12 +171,16 @@ class ISIC2024Model(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
-        return F.cross_entropy(y_pred_logits, y)
+        loss = F.cross_entropy(y_pred_logits, y)
+        self.log("train_loss", loss.item())
+        return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
-        return F.cross_entropy(y_pred_logits, y)
+        loss = F.cross_entropy(y_pred_logits, y)
+        self.log("val_loss", loss.item())
+        return loss
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
