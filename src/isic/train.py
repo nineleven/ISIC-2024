@@ -17,6 +17,29 @@ import pytorch_lightning as pl
 import multiprocess as multiprocessing
 
 
+def collate_fn(batch):
+    max_size = max(x.shape[0] for x, _ in batch)
+
+    xs = []
+    ys = []
+
+    for x, y in batch:
+        size = x.shape[0]
+
+        if size != max_size:
+            p1 = (max_size - size) // 2
+            p2 = (max_size - size) - p1
+            x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
+
+        xs.append(x)
+        ys.append(y)
+
+    xs = (np.asarray(xs).astype("float32") / 255).astype("float16")
+    ys = np.eye(2)[ys].astype("float16")
+
+    return xs, ys
+
+
 class ISIC2024Dataset(Dataset):
 
     def __init__(self, path: str, target: pd.Series, ids: list[str] = None):
