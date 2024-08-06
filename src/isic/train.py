@@ -1,0 +1,240 @@
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+from pathlib import Path
+from PIL import Image
+
+import h5py
+import io
+
+import torch
+from torch.nn import functional as F
+from torch.utils.data import Dataset, DataLoader
+from torchvision.models import resnet18
+
+import pytorch_lightning as pl
+
+import multiprocess as multiprocessing
+
+
+class ISIC2024Dataset(Dataset):
+
+    def __init__(self, path: str, target: pd.Series, ids: list[str] = None):
+        super().__init__()
+        if ids is None:
+            with h5py.File(path, 'r') as f:
+                ids = list(f.keys())
+        self.path = path
+        self.target = target
+        self.ids = ids
+        self.file = h5py.File(self.path, 'r')
+
+    def __getitem__(self, idx):
+        isic_id = self.ids[idx]
+
+        img_raw_data = self.file[isic_id][()]
+
+        img = np.array(Image.open(io.BytesIO(img_raw_data)))
+        label = self.target.loc[isic_id]
+
+        assert img.shape[0] == img.shape[1]
+
+        return img, label
+
+    def __len__(self):
+        return len(self.ids)
+
+    def __del__(self):
+        if hasattr(self, "file"):
+            self.file.close()
+
+    def __getstate__(self):
+        return {k: v for k, v in self.__dict__.items() if k != "file"}
+
+    def __setstate__(self, state):
+        import h5py
+        self.__dict__.update(state)
+        self.file = h5py.File(self.path, 'r')
+
+
+class ISIC2024DataLoader:
+
+    def __init__(self, dataset: ISIC2024Dataset, batch_size: int, shuffle=True):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+
+        self.k = 5
+
+    def _make_batches(self, items):
+        items = sorted(items, key=lambda x: x[0].shape[0])
+
+        for i in range(0, len(items), self.batch_size):
+            j = min(len(items), i + self.batch_size)
+            max_size = items[j - 1][0].shape[0]
+
+            xs = []
+            ys = []
+
+            for x, y in items[i: j]:
+                size = x.shape[0]
+
+                if size != max_size:
+                    p1 = (max_size - size) // 2
+                    p2 = (max_size - size) - p1
+                    x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
+
+                xs.append(x)
+                ys.append(y)
+
+            xs = (np.asarray(xs).astype("float32") / 255).astype("float16")
+            ys = np.eye(2)[ys].astype("float16")
+
+            yield xs, ys
+
+    def load(self, queue, indices):
+        items = []
+
+        for idx in indices:
+            x, y = self.dataset[idx]
+            items.append((x, y))
+
+            if len(items) == self.k * self.batch_size:
+                for batch in self._make_batches(items):
+                    queue.put(batch)
+                items = []
+
+            while queue.qsize() > 10:
+                continue
+
+        if len(items) > 0:
+            for batch in self._make_batches(items):
+                queue.put(batch)
+
+    def __iter__(self):
+        indices = np.arange(len(self.dataset))
+
+        if self.shuffle:
+            np.random.shuffle(indices)
+
+        with multiprocessing.Manager() as manager:
+            queue = manager.Queue()
+            with multiprocessing.Pool(2) as pool:
+                pool.map_async(self.load, [(self, queue, indices[::2]), (self, queue, indices[1::2])])
+
+                try:
+                    while True:
+                        yield queue.get(timeout=10)
+                except Exception as ex:
+                    print(ex)
+
+    def __len__(self):
+        return (len(self.dataset) + self.batch_size - 1) // self.batch_size
+
+
+class ISIC2024Model(pl.LightningModule):
+
+    def __init__(self):
+        super().__init__()
+        self.model = resnet18(num_classes=2)
+
+    def _preprocess_batch(self, batch):
+        x, y = batch
+
+        x = torch.as_tensor(np.moveaxis(x, -1, 1), device=self.device)
+        y = torch.as_tensor(y, device=self.device)
+        return x, y
+
+    def training_step(self, batch, batch_idx):
+        x, y = self._preprocess_batch(batch)
+        y_pred_logits = self.model(x)
+        return F.cross_entropy(y_pred_logits, y)
+
+    def validation_step(self, batch, batch_idx):
+        x, y = self._preprocess_batch(batch)
+        y_pred_logits = self.model(x)
+        return F.cross_entropy(y_pred_logits, y)
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), 1e-4)
+
+
+
+if __name__ == "__main__":
+    train_metadata = pd.read_csv("/kaggle/input/isic-2024-challenge/train-metadata.csv")
+    train_metadata.head()
+
+    if Path("ids.json").exists():
+        with open("ids.json", "r") as f:
+            import json
+
+            all_isic_indices = json.load(f)
+    else:
+        with h5py.File("/kaggle/input/isic-2024-challenge/train-image.hdf5", 'r') as f:
+            all_isic_indices = list(f.keys())
+        with open("ids.json", "w") as f:
+            import json
+
+            json.dump(all_isic_indices, f)
+
+    all_isic_indices = np.random.choice(all_isic_indices, size=int(len(all_isic_indices) * 0.25), replace=False)
+
+    val_ratio = 0.3
+
+    all_patient_ids = train_metadata["patient_id"].unique()
+    num_patients = len(all_patient_ids)
+
+    num_train_patients = int(num_patients * (1 - val_ratio))
+    num_val_patients = num_patients - num_train_patients
+
+    perm = np.random.permutation(all_patient_ids)
+    train_patients = perm[:num_train_patients]
+    val_patients = perm[num_train_patients:]
+
+    train_indices = train_metadata.loc[train_metadata["patient_id"].isin(train_patients), "isic_id"].tolist()
+    val_indices = train_metadata.loc[train_metadata["patient_id"].isin(val_patients), "isic_id"].tolist()
+
+
+    train_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5", train_metadata.set_index("isic_id")["target"], train_indices)
+    val_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5", train_metadata.set_index("isic_id")["target"], val_indices)
+    print("train ds size:", len(train_ds))
+    print("val ds size:", len(val_ds))
+
+    multiprocessing.set_start_method("spawn")
+
+
+    def collate_fn(batch):
+        max_size = max(x.shape[0] for x, _ in batch)
+
+        xs = []
+        ys = []
+
+        for x, y in batch:
+            size = x.shape[0]
+
+            if size != max_size:
+                p1 = (max_size - size) // 2
+                p2 = (max_size - size) - p1
+                x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
+
+            xs.append(x)
+            ys.append(y)
+
+        xs = (np.asarray(xs).astype("float32") / 255).astype("float16")
+        ys = np.eye(2)[ys].astype("float16")
+
+        return xs, ys
+
+    batch_size = 128
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn,
+                              multiprocessing_context=multiprocessing.get_context())  # ISIC2024DataLoader(train_ds, batch_size)
+    print("train loader:", len(train_loader), "batches")
+    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn,
+                            multiprocessing_context=multiprocessing.get_context())  # ISIC2024DataLoader(val_ds, batch_size)
+    print("train loader:", len(val_loader), "batches")
+
+    model = ISIC2024Model()
+
+    trainer = pl.Trainer(precision="16-mixed")
+    trainer.fit(model, train_loader, val_loader)
