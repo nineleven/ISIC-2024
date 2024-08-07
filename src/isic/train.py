@@ -33,7 +33,7 @@ def collate_fn(batch):
             p2 = (max_size - size) - p1
             x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
 
-            if y == 1:
+            if np.random.randint(0, 2) == 0:
                 angle = np.random.randint(0, 180)
                 # Calculate the rotation matrix
                 M = cv2.getRotationMatrix2D((max_size // 2, max_size // 2), angle, 1.0)
