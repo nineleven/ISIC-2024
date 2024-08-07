@@ -201,9 +201,20 @@ class ISIC2024Model(pl.LightningModule):
 
         weights = torch.as_tensor([1, self.pos_freq - 1], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
+        acc = self.compute_balanced_accuracy(y_pred_logits, y)
 
         self.log("val_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
+        self.log("val_acc", acc.item(), prog_bar=True, batch_size=x.shape[0])
         return loss
+
+    def compute_balanced_accuracy(self, y_pred_logits, y):
+        y_pred_proba = F.softmax(y_pred_logits, dim=1)
+        y_pred = torch.argmax(y_pred_proba, dim=1)
+
+        TP = y_pred[y == 1].sum()
+        TN = (1 - y_pred)[y == 0].sum()
+
+        return (TP / y.sum() + TN / (1 - y).sum()) / 2
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
