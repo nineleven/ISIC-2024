@@ -36,9 +36,9 @@ def collate_fn(batch):
             if y == 1:
                 angle = np.random.randint(0, 180)
                 # Calculate the rotation matrix
-                M = cv2.getRotationMatrix2D((size // 2, size // 2), angle, 1.0)
+                M = cv2.getRotationMatrix2D((max_size // 2, max_size // 2), angle, 1.0)
                 # Perform the rotation
-                x = cv2.warpAffine(x, M, (size, size))
+                x = cv2.warpAffine(x, M, (max_size, max_size))
 
                 if np.random.randint(0, 2) == 0:
                     x = np.flip(x, axis=1)
