@@ -1,16 +1,18 @@
 import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 
-from pathlib import Path
 from PIL import Image
 
 import h5py
 import io
+import cv2
 
 import torch
 from torch.nn import functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision.models import squeezenet1_1
+
+from sklearn.metrics import roc_curve, auc
 
 import pytorch_lightning as pl
 
@@ -30,6 +32,16 @@ def collate_fn(batch):
             p1 = (max_size - size) // 2
             p2 = (max_size - size) - p1
             x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
+
+            if y[1] == 1:
+                angle = np.random.randint(0, 180)
+                # Calculate the rotation matrix
+                M = cv2.getRotationMatrix2D((size // 2, size // 2), angle, 1.0)
+                # Perform the rotation
+                x = cv2.warpAffine(x, M, (size, size))
+
+                if np.random.randint(0, 2) == 0:
+                    x = np.flip(x, axis=1)
 
         xs.append(x)
         ys.append(y)
@@ -202,9 +214,11 @@ class ISIC2024Model(pl.LightningModule):
         weights = torch.as_tensor([1, self.pos_freq - 1], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
         acc = self.compute_balanced_accuracy(y_pred_logits, y)
+        pauc = self.compute_balanced_accuracy(y_pred_logits, y)
 
         self.log("val_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
         self.log("val_acc", acc.item(), prog_bar=True, batch_size=x.shape[0])
+        self.log("val_pauc", pauc.item(), prog_bar=True, batch_size=x.shape[0])
         return loss
 
     def compute_balanced_accuracy(self, y_pred_logits, y):
@@ -225,6 +239,13 @@ class ISIC2024Model(pl.LightningModule):
 
         return (TN / N + TP / P) / 2
 
+    def pauc_score(self, y_pred_logits, y):
+        y_pred_proba = F.softmax(y_pred_logits, dim=1)
+        fpr, tpr, _ = roc_curve(y[:, 1].cpu().numpy(), y_pred_proba[:, 1].cpu().numpy())
+        am = np.argmax(tpr >= 0.8)
+        pauc = auc(fpr[am:], tpr[am:] - tpr[am])
+        return torch.as_tensor(pauc, dtype=torch.float16, device=y.device)
+
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
 
@@ -233,21 +254,6 @@ class ISIC2024Model(pl.LightningModule):
 if __name__ == "__main__":
     train_metadata = pd.read_csv("/kaggle/input/isic-2024-challenge/train-metadata.csv")
     train_metadata.head()
-
-    if Path("ids.json").exists():
-        with open("ids.json", "r") as f:
-            import json
-
-            all_isic_indices = json.load(f)
-    else:
-        with h5py.File("/kaggle/input/isic-2024-challenge/train-image.hdf5", 'r') as f:
-            all_isic_indices = list(f.keys())
-        with open("ids.json", "w") as f:
-            import json
-
-            json.dump(all_isic_indices, f)
-
-    all_isic_indices = np.random.choice(all_isic_indices, size=int(len(all_isic_indices) * 0.25), replace=False)
 
     val_ratio = 0.3
     batch_size = 128
