@@ -211,10 +211,10 @@ class ISIC2024Model(pl.LightningModule):
         y_pred_proba = F.softmax(y_pred_logits, dim=1)
         y_pred = torch.argmax(y_pred_proba, dim=1)
 
-        TP = y_pred[y == 1].sum()
-        TN = (1 - y_pred)[y == 0].sum()
+        TP = y_pred[y[:, 1] == 1].sum()
+        TN = (1 - y_pred)[y[:, 1] == 0].sum()
 
-        return (TP / y.sum() + TN / (1 - y).sum()) / 2
+        return (TP / y[:, 1].sum() + TN / (1 - y[:, 1]).sum()) / 2
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
