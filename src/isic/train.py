@@ -189,7 +189,7 @@ class ISIC2024Model(pl.LightningModule):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
 
-        weights = torch.as_tensor([1, self.pos_freq - 1], dtype="float16", device=self.device)
+        weights = torch.as_tensor([1, self.pos_freq - 1], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
 
         self.log("train_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
@@ -199,7 +199,7 @@ class ISIC2024Model(pl.LightningModule):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
 
-        weights = torch.as_tensor([1, self.pos_freq - 1], dtype="float16", device=self.device)
+        weights = torch.as_tensor([1, self.pos_freq - 1], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
 
         self.log("val_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
@@ -230,6 +230,8 @@ if __name__ == "__main__":
     all_isic_indices = np.random.choice(all_isic_indices, size=int(len(all_isic_indices) * 0.25), replace=False)
 
     val_ratio = 0.3
+    batch_size = 128
+    pos_freq = 5
 
     all_patient_ids = train_metadata["patient_id"].unique()
     num_patients = len(all_patient_ids)
@@ -268,9 +270,6 @@ if __name__ == "__main__":
     print("val ds size:", len(val_ds))
 
     multiprocessing.set_start_method("spawn")
-
-    batch_size = 128
-    pos_freq = 5
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn)  # ISIC2024DataLoader(train_ds, batch_size)
     print("train loader:", len(train_loader), "batches")
