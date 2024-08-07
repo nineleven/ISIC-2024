@@ -214,7 +214,7 @@ class ISIC2024Model(pl.LightningModule):
         weights = torch.as_tensor([1, self.pos_freq - 1], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
         acc = self.compute_balanced_accuracy(y_pred_logits, y)
-        pauc = self.compute_balanced_accuracy(y_pred_logits, y)
+        pauc = self.compute_pauc_score(y_pred_logits, y)
 
         self.log("val_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
         self.log("val_acc", acc.item(), prog_bar=True, batch_size=x.shape[0])
@@ -239,7 +239,7 @@ class ISIC2024Model(pl.LightningModule):
 
         return (TN / N + TP / P) / 2
 
-    def pauc_score(self, y_pred_logits, y):
+    def compute_pauc_score(self, y_pred_logits, y):
         y_pred_proba = F.softmax(y_pred_logits, dim=1)
         fpr, tpr, _ = roc_curve(y[:, 1].cpu().numpy(), y_pred_proba[:, 1].cpu().numpy())
         am = np.argmax(tpr >= 0.8)
