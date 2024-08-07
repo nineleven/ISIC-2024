@@ -80,6 +80,23 @@ class ISIC2024Dataset(Dataset):
         self.file = h5py.File(self.path, 'r')
 
 
+class ISIC2024BalancedDataset(Dataset):
+
+    def __init__(self, ds_pos, ds_neg, pos_freq):
+        self.ds_pos = ds_pos
+        self.ds_neg = ds_neg
+
+        self.pos_freq = pos_freq
+
+    def __getitem__(self, idx):
+        if idx % self.pos_freq == self.pos_freq - 1:
+            return self.ds_pos[idx // self.pos_freq]
+        return self.ds_neg[idx - idx // self.pos_freq]
+
+    def __len__(self):
+        return len(self.ds_neg) + len(self.ds_neg) // self.pos_freq
+
+
 class ISIC2024DataLoader:
 
     def __init__(self, dataset: ISIC2024Dataset, batch_size: int, shuffle=True):
@@ -157,13 +174,13 @@ class ISIC2024DataLoader:
 
 class ISIC2024Model(pl.LightningModule):
 
-    def __init__(self):
+    def __init__(self, pos_freq):
         super().__init__()
         self.model = resnet18(num_classes=2)
+        self.pos_freq = pos_freq
 
     def _preprocess_batch(self, batch):
         x, y = batch
-
         x = torch.as_tensor(np.moveaxis(x, -1, 1), device=self.device)
         y = torch.as_tensor(y, device=self.device)
         return x, y
@@ -171,14 +188,20 @@ class ISIC2024Model(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
-        loss = F.cross_entropy(y_pred_logits, y)
+
+        weights = torch.as_tensor([1, self.pos_freq - 1], dtype="float16", device=self.device)
+        loss = F.cross_entropy(y_pred_logits, y, weights)
+
         self.log("train_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
-        loss = F.cross_entropy(y_pred_logits, y)
+
+        weights = torch.as_tensor([1, self.pos_freq - 1], dtype="float16", device=self.device)
+        loss = F.cross_entropy(y_pred_logits, y, weights)
+
         self.log("val_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
         return loss
 
@@ -218,50 +241,43 @@ if __name__ == "__main__":
     train_patients = perm[:num_train_patients]
     val_patients = perm[num_train_patients:]
 
-    train_indices = train_metadata.loc[train_metadata["patient_id"].isin(train_patients), "isic_id"].tolist()
-    val_indices = train_metadata.loc[train_metadata["patient_id"].isin(val_patients), "isic_id"].tolist()
+    train_pos_indices = train_metadata.loc[
+        train_metadata["patient_id"].isin(train_patients) & (train_metadata["target"] == 1), "isic_id"].tolist()
+    train_neg_indices = train_metadata.loc[
+        train_metadata["patient_id"].isin(train_patients) & (train_metadata["target"] == 0), "isic_id"].tolist()
 
+    val_pos_indices = train_metadata.loc[
+        train_metadata["patient_id"].isin(val_patients) & (train_metadata["target"] == 1), "isic_id"].tolist()
+    val_neg_indices = train_metadata.loc[
+        train_metadata["patient_id"].isin(val_patients) & (train_metadata["target"] == 0), "isic_id"].tolist()
 
-    train_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5", train_metadata.set_index("isic_id")["target"], train_indices)
-    val_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5", train_metadata.set_index("isic_id")["target"], val_indices)
+    train_pos_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5",
+                                   train_metadata.set_index("isic_id")["target"], train_pos_indices)
+    train_neg_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5",
+                                   train_metadata.set_index("isic_id")["target"], train_neg_indices)
+
+    val_pos_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5",
+                                 train_metadata.set_index("isic_id")["target"], val_pos_indices)
+    val_neg_ds = ISIC2024Dataset("/kaggle/input/isic-2024-challenge/train-image.hdf5",
+                                 train_metadata.set_index("isic_id")["target"], val_neg_indices)
+
+    train_ds = ISIC2024BalancedDataset(train_pos_ds, train_neg_ds, pos_freq)
+    val_ds = ISIC2024BalancedDataset(val_pos_ds, val_neg_ds, pos_freq)
+
     print("train ds size:", len(train_ds))
     print("val ds size:", len(val_ds))
 
     multiprocessing.set_start_method("spawn")
 
-
-    def collate_fn(batch):
-        max_size = max(x.shape[0] for x, _ in batch)
-
-        xs = []
-        ys = []
-
-        for x, y in batch:
-            size = x.shape[0]
-
-            if size != max_size:
-                p1 = (max_size - size) // 2
-                p2 = (max_size - size) - p1
-                x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
-
-            xs.append(x)
-            ys.append(y)
-
-        xs = (np.asarray(xs).astype("float32") / 255).astype("float16")
-        ys = np.eye(2)[ys].astype("float16")
-
-        return xs, ys
-
     batch_size = 128
+    pos_freq = 5
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn,
-                              multiprocessing_context=multiprocessing.get_context())  # ISIC2024DataLoader(train_ds, batch_size)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn)  # ISIC2024DataLoader(train_ds, batch_size)
     print("train loader:", len(train_loader), "batches")
-    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn,
-                            multiprocessing_context=multiprocessing.get_context())  # ISIC2024DataLoader(val_ds, batch_size)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn)  # ISIC2024DataLoader(val_ds, batch_size)
     print("train loader:", len(val_loader), "batches")
 
-    model = ISIC2024Model()
+    model = ISIC2024Model(pos_freq)
 
     trainer = pl.Trainer(precision="16-mixed")
     trainer.fit(model, train_loader, val_loader)
