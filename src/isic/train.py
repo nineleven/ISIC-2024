@@ -90,7 +90,7 @@ class ISIC2024BalancedDataset(Dataset):
 
     def __getitem__(self, idx):
         if idx % self.pos_freq == self.pos_freq - 1:
-            return self.ds_pos[idx // self.pos_freq]
+            return self.ds_pos[(idx // self.pos_freq) % len(self.pos_freq)]
         return self.ds_neg[idx - idx // self.pos_freq]
 
     def __len__(self):
