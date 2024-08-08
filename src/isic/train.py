@@ -192,7 +192,7 @@ class ISIC2024Model(pl.LightningModule):
 
     def __init__(self, pos_freq):
         super().__init__()
-        self.model = squeezenet1_1(num_classes=2)
+        self.model = squeezenet1_1(num_classes=2, dropout=0.75)
         self.pos_freq = pos_freq
 
     def _preprocess_batch(self, batch):
