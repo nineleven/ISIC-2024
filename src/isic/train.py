@@ -18,38 +18,42 @@ import pytorch_lightning as pl
 
 import multiprocess as multiprocessing
 
+from .augmentations import ImageAugmenter
 
-def collate_fn(batch):
-    max_size = max(x.shape[0] for x, _ in batch)
 
-    xs = []
-    ys = []
+def make_collate_fn(augment=True):
+    def collate_fn(batch):
+        max_size = max(x.shape[0] for x, _ in batch)
 
-    for x, y in batch:
-        size = x.shape[0]
+        xs = []
+        ys = []
 
-        if size != max_size:
-            p1 = (max_size - size) // 2
-            p2 = (max_size - size) - p1
-            x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
+        for x, y in batch:
+            size = x.shape[0]
 
-            if np.random.randint(0, 2) == 0:
-                angle = np.random.randint(0, 180)
-                # Calculate the rotation matrix
-                M = cv2.getRotationMatrix2D((max_size // 2, max_size // 2), angle, 1.0)
-                # Perform the rotation
-                x = cv2.warpAffine(x, M, (max_size, max_size))
+            if size != max_size:
+                p1 = (max_size - size) // 2
+                p2 = (max_size - size) - p1
+                x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
 
-                if np.random.randint(0, 2) == 0:
-                    x = np.flip(x, axis=1)
+                if augment and np.random.random() < 0.5:
+                    aug = ImageAugmenter()
+                    if np.random.random() < 0.5:
+                        x = aug.random_rotation_flip(x)
+                    if np.random.random() < 0.5:
+                        x = aug.random_scale(x)
+                    if np.random.random() < 0.5:
+                        x = aug.random_shear(x)
 
-        xs.append(x)
-        ys.append(y)
+            xs.append(x)
+            ys.append(y)
 
-    xs = (np.asarray(xs).astype("float32") / 255).astype("float16")
-    ys = np.eye(2)[ys].astype("float16")
+        xs = (np.asarray(xs).astype("float32") / 255).astype("float16")
+        ys = np.eye(2)[ys].astype("float16")
 
-    return xs, ys
+        return xs, ys
+
+    return collate_fn
 
 
 class ISIC2024Dataset(Dataset):
@@ -297,9 +301,9 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn)  # ISIC2024DataLoader(train_ds, batch_size)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=make_collate_fn())  # ISIC2024DataLoader(train_ds, batch_size)
     print("train loader:", len(train_loader), "batches")
-    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=collate_fn)  # ISIC2024DataLoader(val_ds, batch_size)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=make_collate_fn(augment=False))  # ISIC2024DataLoader(val_ds, batch_size)
     print("train loader:", len(val_loader), "batches")
 
     model = ISIC2024Model(pos_freq)
