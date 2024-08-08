@@ -39,12 +39,10 @@ class CollateFn:
                 p2 = (max_size - size) - p1
                 x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
 
-            if self.augment and np.random.random() < 0.5:
+            if self.augment and np.random.random() < 0.75:
                 aug = ImageAugmenter()
-                if np.random.random() < 0.5:
-                    x = aug.hflip(image=x)["image"]
-                if np.random.random() < 0.5:
-                    x = aug.affine(image=x)["image"]
+                x = aug.hflip(image=x)["image"]
+                x = aug.affine(image=x)["image"]
 
             xs.append(x)
             ys.append(y)
