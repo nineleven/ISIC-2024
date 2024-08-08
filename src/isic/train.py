@@ -5,7 +5,6 @@ from PIL import Image
 
 import h5py
 import io
-import cv2
 
 import torch
 from torch.nn import functional as F
@@ -21,8 +20,12 @@ import multiprocess as multiprocessing
 from .augmentations import ImageAugmenter
 
 
-def make_collate_fn(augment=True):
-    def collate_fn(batch):
+class CollateFn:
+
+    def __init__(self, augment=True):
+        self.augment = augment
+
+    def __call__(self, batch):
         max_size = max(x.shape[0] for x, _ in batch)
 
         xs = []
@@ -36,7 +39,7 @@ def make_collate_fn(augment=True):
                 p2 = (max_size - size) - p1
                 x = np.pad(x, [(p1, p2), (p1, p2), (0, 0)])
 
-                if augment and np.random.random() < 0.5:
+                if self.augment and np.random.random() < 0.5:
                     aug = ImageAugmenter()
                     if np.random.random() < 0.5:
                         x = aug.random_rotation_flip(x)
@@ -53,7 +56,6 @@ def make_collate_fn(augment=True):
 
         return xs, ys
 
-    return collate_fn
 
 
 class ISIC2024Dataset(Dataset):
@@ -301,9 +303,9 @@ if __name__ == "__main__":
 
     multiprocessing.set_start_method("spawn")
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=make_collate_fn())  # ISIC2024DataLoader(train_ds, batch_size)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, num_workers=2, collate_fn=CollateFn())  # ISIC2024DataLoader(train_ds, batch_size)
     print("train loader:", len(train_loader), "batches")
-    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=make_collate_fn(augment=False))  # ISIC2024DataLoader(val_ds, batch_size)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=2, collate_fn=CollateFn(augment=False))  # ISIC2024DataLoader(val_ds, batch_size)
     print("train loader:", len(val_loader), "batches")
 
     model = ISIC2024Model(pos_freq)
