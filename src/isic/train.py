@@ -42,9 +42,9 @@ class CollateFn:
             if self.augment and np.random.random() < 0.5:
                 aug = ImageAugmenter()
                 if np.random.random() < 0.5:
-                    x = aug.hflip(x=x)["x"]
+                    x = aug.hflip(image=x)["image"]
                 if np.random.random() < 0.5:
-                    x = aug.affine(x=x)["x"]
+                    x = aug.affine(image=x)["image"]
 
             xs.append(x)
             ys.append(y)
