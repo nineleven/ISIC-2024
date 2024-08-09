@@ -169,7 +169,7 @@ class Autoencoder(pl.LightningModule):
         img1 = np.moveaxis(x[idx].cpu().detach().numpy(), 0, -1)
         img2 = np.moveaxis(x_hat_sigmoid[idx].cpu().detach().numpy(), 0, -1)
 
-        self.logger.log_images("predictions", [img1, img2])
+        self.logger.log_image("samples", [img1, img2])
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
