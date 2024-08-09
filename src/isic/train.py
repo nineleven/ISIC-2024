@@ -2,6 +2,7 @@ import numpy as np # linear algebra
 import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
 
 from PIL import Image
+import cv2
 
 import h5py
 import io
