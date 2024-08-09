@@ -111,7 +111,6 @@ class Decoder(nn.Module):
             nn.Upsample(scale_factor=2),
             nn.ReLU(),
             nn.Conv2d(16, 3, kernel_size=3, padding=1, stride=1),
-            nn.Sigmoid(),
         )
 
     def forward(self, z):
@@ -135,9 +134,12 @@ class Autoencoder(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         x = torch.as_tensor(np.moveaxis(batch, -1, 1), device=self.device)
         x_hat = self(x)
-        l2_loss = F.mse_loss(x_hat, x)
-        l1_loss = F.l1_loss(x_hat, x)
-        log_loss = F.binary_cross_entropy(x_hat, x)
+        x_hat_sigmoid = F.sigmoid(x_hat)
+
+        l2_loss = F.mse_loss(x_hat_sigmoid, x)
+        l1_loss = F.l1_loss(x_hat_sigmoid, x)
+        log_loss = F.binary_cross_entropy_with_logits(x_hat, x)
+
         self.log("train_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("train_l2_loss", l2_loss.item(), prog_bar=True, batch_size=batch.shape[0])
         self.log("train_log_loss", log_loss.item(), batch_size=batch.shape[0])
@@ -146,13 +148,20 @@ class Autoencoder(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x = torch.as_tensor(np.moveaxis(batch, -1, 1), device=self.device)
         x_hat = self(x)
-        l2_loss = F.mse_loss(x_hat, x)
-        l1_loss = F.l1_loss(x_hat, x)
-        log_loss = F.binary_cross_entropy(x_hat, x)
+        x_hat_sigmoid = F.sigmoid(x_hat)
+
+        l2_loss = F.mse_loss(x_hat_sigmoid, x)
+        l1_loss = F.l1_loss(x_hat_sigmoid, x)
+        log_loss = F.binary_cross_entropy_with_logits(x_hat, x)
+
         self.log("val_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("val_l2_loss", l2_loss.item(), prog_bar=True, batch_size=batch.shape[0])
         self.log("val_log_loss", log_loss.item(), batch_size=batch.shape[0])
+
         return l2_loss
+
+    def log_images(self):
+        self.logger.log_images()
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
