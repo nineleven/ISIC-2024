@@ -3,16 +3,11 @@ import io
 import albumentations as A
 import cv2
 import h5py
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
 import torch
-import wandb
 
 from PIL import Image
-from kaggle_secrets import UserSecretsClient
-from pytorch_lightning.loggers.wandb import WandbLogger
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -143,14 +138,14 @@ class Autoencoder(pl.LightningModule):
         self.log("train_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("train_l2_loss", l2_loss.item(), prog_bar=True, batch_size=batch.shape[0])
         self.log("train_log_loss", log_loss.item(), batch_size=batch.shape[0])
-        return l2_loss
+        return l1_loss
 
     def validation_step(self, batch, batch_idx):
         x = torch.as_tensor(np.moveaxis(batch, -1, 1), device=self.device)
         x_hat = self(x)
         x_hat_sigmoid = F.sigmoid(x_hat)
 
-        if batch_idx % 50 == 49:
+        if batch_idx % 500 == 499:
             self.log_images(x, x_hat_sigmoid)
 
         l2_loss = F.mse_loss(x_hat_sigmoid, x)
@@ -161,7 +156,7 @@ class Autoencoder(pl.LightningModule):
         self.log("val_l2_loss", l2_loss.item(), prog_bar=True, batch_size=batch.shape[0])
         self.log("val_log_loss", log_loss.item(), batch_size=batch.shape[0])
 
-        return l2_loss
+        return l1_loss
 
     def log_images(self, x, x_hat_sigmoid):
         idx = np.random.randint(0, x.shape[0])
