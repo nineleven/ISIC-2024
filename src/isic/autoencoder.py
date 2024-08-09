@@ -150,6 +150,9 @@ class Autoencoder(pl.LightningModule):
         x_hat = self(x)
         x_hat_sigmoid = F.sigmoid(x_hat)
 
+        if batch_idx % 50 == 49:
+            self.log_images(x, x_hat_sigmoid)
+
         l2_loss = F.mse_loss(x_hat_sigmoid, x)
         l1_loss = F.l1_loss(x_hat_sigmoid, x)
         log_loss = F.binary_cross_entropy_with_logits(x_hat, x)
@@ -160,8 +163,13 @@ class Autoencoder(pl.LightningModule):
 
         return l2_loss
 
-    def log_images(self):
-        self.logger.log_images()
+    def log_images(self, x, x_hat_sigmoid):
+        idx = np.random.randint(0, x.shape[0])
+
+        img1 = np.moveaxis(x[idx].cpu().detach().numpy(), 0, -1)
+        img2 = np.moveaxis(x_hat_sigmoid[idx].cpu().detach().numpy(), 0, -1)
+
+        self.logger.log_images("predictions", [img1, img2])
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), 1e-4)
