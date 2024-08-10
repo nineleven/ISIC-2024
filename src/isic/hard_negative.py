@@ -85,7 +85,7 @@ class ISIC2024Dataset(Dataset):
 
 
 class ISIC2024Model(pl.LightningModule):
-    def __init__(self, scale_pos_weight):
+    def __init__(self):
         super().__init__()
         self.model = squeezenet1_1(num_classes=2)
 
