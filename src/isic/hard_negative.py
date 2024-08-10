@@ -88,7 +88,6 @@ class ISIC2024Model(pl.LightningModule):
     def __init__(self, scale_pos_weight):
         super().__init__()
         self.model = squeezenet1_1(num_classes=2)
-        self.scale_pos_weight = scale_pos_weight  # y.mean() / (1 - y).mean()
 
     def _preprocess_batch(self, batch):
         x, y = batch
@@ -100,7 +99,8 @@ class ISIC2024Model(pl.LightningModule):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
 
-        weights = torch.as_tensor([1, self.scale_pos_weight], dtype=torch.float16, device=self.device)
+        y_mean = y[:, 1].mean()
+        weights = torch.as_tensor([1, y_mean / (1 - y_mean)], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
 
         self.log("train_loss", loss.item(), prog_bar=True, batch_size=x.shape[0])
@@ -110,7 +110,8 @@ class ISIC2024Model(pl.LightningModule):
         x, y = self._preprocess_batch(batch)
         y_pred_logits = self.model(x)
 
-        weights = torch.as_tensor([1, self.scale_pos_weight], dtype=torch.float16, device=self.device)
+        y_mean = y[:, 1].mean()
+        weights = torch.as_tensor([1, y_mean / (1 - y_mean)], dtype=torch.float16, device=self.device)
         loss = F.cross_entropy(y_pred_logits, y, weights)
         acc = self.compute_balanced_accuracy(y_pred_logits, y)
         pauc = self.compute_pauc_score(y_pred_logits, y)
