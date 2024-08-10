@@ -145,7 +145,7 @@ class Autoencoder(pl.LightningModule):
         x_hat = self(x)
         x_hat_sigmoid = F.sigmoid(x_hat)
 
-        if batch_idx % 500 == 499:
+        if batch_idx % 200 == 199:
             self.log_images(x, x_hat_sigmoid)
 
         l2_loss = F.mse_loss(x_hat_sigmoid, x)
@@ -167,4 +167,6 @@ class Autoencoder(pl.LightningModule):
         self.logger.log_image("samples", [img1, img2])
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), 1e-4)
+        optimizer = torch.optim.Adam(self.parameters(), 1e-3)
+        lr_scheduler =torch.optim.ExponentialLR(optimizer, gamma=0.8)
+        return [optimizer], [lr_scheduler]
