@@ -71,13 +71,14 @@ class Encoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=2),
             nn.ReLU(),
         )
-        self.fc = nn.Linear(4 * 4 * 256, 512 * 2)
+        self.fc_mu = nn.Linear(4 * 4 * 256, 512)
+        self.fc_logvar = nn.Linear(4 * 4 * 256, 512)
 
     def forward(self, x):
         z1 = self.conv(x).reshape(-1, 256 * 4 * 4)
-        z2 = self.fc(z1)
-        mu, sigma = z2[:,:512], z2[:,512:]
-        return mu, sigma
+        mu = self.fc_mu(z1)
+        logvar = self.fc_logvar(z1)
+        return mu, logvar
 
 
 class Decoder(nn.Module):
@@ -128,7 +129,12 @@ class Autoencoder(pl.LightningModule):
         return x_hat
 
     def kl_divergence(self, mu, logvar):
-        return - 0.5 * torch.sum(1 + logvar - mu**2 - torch.exp(logvar), dim=1).mean()
+        return -0.5 * torch.sum(1 + logvar - mu**2 - torch.exp(logvar), dim=1).mean()
+
+    def cosine_annealing(self, t_i):
+        eta_min = 1
+        eta_max = 100
+        return eta_min + 0.5 * (eta_max - eta_min) * (1 + np.cos((t_i % 5000) / 5000 * np.pi))
 
     def training_step(self, batch, batch_idx):
         x = torch.as_tensor(np.moveaxis(batch, -1, 1), device=self.device)
@@ -143,8 +149,11 @@ class Autoencoder(pl.LightningModule):
         l1_loss = F.l1_loss(x_hat_sigmoid, x)
         log_loss = F.binary_cross_entropy_with_logits(x_hat, x)
         kl_div = self.kl_divergence(mu, logvar)
-        loss = log_loss + kl_div / np.prod(x.shape[1:])
 
+        beta = self.cosine_annealing(self.global_step)
+        loss = log_loss + beta * kl_div / np.prod(x.shape[1:])
+
+        self.log("beta", beta, batch_size=batch.shape[0])
         self.log("train_loss", loss.item(), prog_bar=True, batch_size=batch.shape[0])
         self.log("train_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("train_l2_loss", l2_loss.item(), batch_size=batch.shape[0])
