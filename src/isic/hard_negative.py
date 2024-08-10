@@ -147,4 +147,4 @@ class ISIC2024Model(pl.LightningModule):
         return torch.as_tensor(pauc, dtype=torch.float16, device=y.device)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), 1e-4)
+        return torch.optim.Adam(self.parameters(), 1e-3)
