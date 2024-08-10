@@ -186,7 +186,7 @@ class Autoencoder(pl.LightningModule):
         self.logger.log_image("reconstructed images", [img1, img2])
 
         n = 2
-        z = torch.randn((n, x.shape[0]), dtype=x.dtype, device=self.device)
+        z = torch.randn((n, 512), dtype=x.dtype, device=self.device)
         x_gen = self.decoder(z)
         img_gen = np.moveaxis(x_gen.cpu().detach().numpy(), 1, -1)
         self.logger.log_image("generated images", list(img_gen))
