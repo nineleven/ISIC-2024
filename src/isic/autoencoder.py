@@ -168,5 +168,5 @@ class Autoencoder(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), 1e-3)
-        lr_scheduler =torch.optim.ExponentialLR(optimizer, gamma=0.8)
+        lr_scheduler =torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
         return [optimizer], [lr_scheduler]
