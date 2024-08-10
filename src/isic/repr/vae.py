@@ -149,7 +149,7 @@ class Autoencoder(pl.LightningModule):
         self.log("train_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("train_l2_loss", l2_loss.item(), batch_size=batch.shape[0])
         self.log("train_log_loss", log_loss.item(), batch_size=batch.shape[0])
-        self.log("val_kl_div", kl_div.item(), batch_size=batch.shape[0])
+        self.log("train_kl_div", kl_div.item(), batch_size=batch.shape[0])
 
         return loss
 
