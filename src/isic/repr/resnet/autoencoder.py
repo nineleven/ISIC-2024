@@ -34,8 +34,8 @@ class ISIC2024Dataset(Dataset):
 
         assert img.shape[0] == img.shape[1]
 
-        if img.shape[0] < 128:
-            img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_CUBIC)
+        if img.shape[0] != 64:
+            img = cv2.resize(img, (64, 64), interpolation=cv2.INTER_AREA)
         img = self.transform(image=img)["image"]
         img = (img.astype("float32") / 255).astype("float16")
 
