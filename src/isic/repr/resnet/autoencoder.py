@@ -100,7 +100,7 @@ class Autoencoder(pl.LightningModule):
         img_x = np.moveaxis(x.cpu().detach().numpy(), 1, -1)
         img_x_hat = np.moveaxis(x_hat.cpu().detach().numpy(), 1, -1)
 
-        images = list(np.stack([img_x, img_x_hat], axis=1).reshape(-1, *img_x.shape[2:]))
+        images = list(np.stack([img_x, img_x_hat], axis=1).reshape(-1, *img_x.shape[1:]))
 
         self.logger.log_image(key, images)
 
