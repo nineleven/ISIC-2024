@@ -24,8 +24,6 @@ class ISIC2024Dataset(Dataset):
         self.ids = ids
         self.file = h5py.File(self.path, 'r')
 
-        self.transform = A.Compose([A.RandomCrop(128, 128)])
-
     def __getitem__(self, idx):
         isic_id = self.ids[idx]
 
@@ -36,7 +34,6 @@ class ISIC2024Dataset(Dataset):
 
         if img.shape[0] != 64:
             img = cv2.resize(img, (64, 64), interpolation=cv2.INTER_AREA)
-        img = self.transform(image=img)["image"]
         img = (img.astype("float32") / 255).astype("float16")
 
         return img
