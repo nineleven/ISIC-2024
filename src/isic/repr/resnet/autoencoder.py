@@ -58,7 +58,7 @@ class Autoencoder(pl.LightningModule):
 
     def __init__(self):
         super().__init__()
-        configs, bottleneck = get_configs("resnet18")
+        configs, bottleneck = get_configs("resnet34")
         self.ae = ResNetAutoEncoder(configs, bottleneck)
 
     def training_step(self, batch, batch_idx):
