@@ -58,7 +58,7 @@ class Autoencoder(pl.LightningModule):
 
     def __init__(self):
         super().__init__()
-        configs, bottleneck = get_configs("resnet34")
+        configs, bottleneck = get_configs("resnet18")
         self.ae = ResNetAutoEncoder(configs, bottleneck)
 
     def training_step(self, batch, batch_idx):
@@ -71,30 +71,38 @@ class Autoencoder(pl.LightningModule):
         self.log("train_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("train_l2_loss", l2_loss.item(), prog_bar=True, batch_size=batch.shape[0])
 
-        return l1_loss
+        return l2_loss
 
     def validation_step(self, batch, batch_idx):
         x = torch.as_tensor(np.moveaxis(batch, -1, 1), device=self.device)
         x_hat = self.ae(x)
 
         if batch_idx % 100 == 99:
-            self.log_images(x, x_hat)
+            idx = np.random.randint(0, x.shape[0], size=1)
+            self.log_images(x[idx], x_hat[idx])
 
         l2_loss = F.mse_loss(x_hat, x)
         l1_loss = F.l1_loss(x_hat, x)
 
+        if torch.isnan(l2_loss) or torch.isnan(l1_loss):
+            if torch.isnan(x).any():
+                print("x is none")
+            if torch.isnan(x_hat).any():
+                print("x_hat is none")
+            self.log_images(x, x_hat, key="nan_loss")
+
         self.log("val_l1_loss", l1_loss.item(), batch_size=batch.shape[0])
         self.log("val_l2_loss", l2_loss.item(), prog_bar=True, batch_size=batch.shape[0])
 
-        return l1_loss
+        return l2_loss
 
-    def log_images(self, x, x_hat_sigmoid):
-        idx = np.random.randint(0, x.shape[0])
+    def log_images(self, x, x_hat, key="samples"):
+        img_x = np.moveaxis(x.cpu().detach().numpy(), 1, -1)
+        img_x_hat = np.moveaxis(x_hat.cpu().detach().numpy(), 1, -1)
 
-        img1 = np.moveaxis(x[idx].cpu().detach().numpy(), 0, -1)
-        img2 = np.moveaxis(x_hat_sigmoid[idx].cpu().detach().numpy(), 0, -1)
+        images = list(np.stack([img_x, img_x_hat], axis=1).reshape(-1, *img_x.shape[2:]))
 
-        self.logger.log_image("samples", [img1, img2])
+        self.logger.log_image(key, images)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), 1e-3)
