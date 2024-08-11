@@ -73,7 +73,7 @@ class Encoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, padding=1, stride=2),
             nn.ReLU(),
         )
-        self.fc = nn.Linear(4 * 4 * 256, 512)
+        self.fc = nn.Linear(4 * 4 * 256, 2048)
 
     def forward(self, x):
         z1 = self.conv(x).reshape(-1, 256 * 4 * 4)
@@ -85,7 +85,7 @@ class Decoder(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.fc = nn.Linear(512, 4 * 4 * 256)
+        self.fc = nn.Linear(2048, 4 * 4 * 256)
         self.conv = nn.Sequential(
             nn.Upsample(scale_factor=2),
             nn.ReLU(),
@@ -145,7 +145,7 @@ class Autoencoder(pl.LightningModule):
         x_hat = self(x)
         x_hat_sigmoid = F.sigmoid(x_hat)
 
-        if batch_idx % 200 == 199:
+        if batch_idx % 100 == 99:
             self.log_images(x, x_hat_sigmoid)
 
         l2_loss = F.mse_loss(x_hat_sigmoid, x)
@@ -168,5 +168,5 @@ class Autoencoder(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), 1e-3)
-        lr_scheduler =torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
+        lr_scheduler =torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5000, eta_min=5e-5)
         return [optimizer], [lr_scheduler]
